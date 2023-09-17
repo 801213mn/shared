@@ -1,0 +1,27 @@
+# Install-Module Microsoft.Graph.Intune
+# Install-Module Microsoft.Graph
+# Connect-MSGraph
+
+cls
+Write-Host "Verbinden met Intune"
+try{
+    $null = Connect-MSGraph
+}catch{
+    Throw "Not authenticated.  Please use the `"Connect-MSGraph`" command to authenticate."
+}
+
+$devices = Get-IntuneManagedDevice | Get-MSGraphAllPages
+Write-Host "$($devices.Count) devices gevonden."
+$deviceGroups = $devices | Where-Object { -not [String]::IsNullOrWhiteSpace($_.serialNumber) } | Group-Object -Property serialNumber
+$duplicatedDevices = $deviceGroups | Where-Object {$_.Count -gt 1 }
+Write-Host "$($duplicatedDevices.Count) serienummers met duplicate entries gevonden"
+foreach($duplicatedDevice in $duplicatedDevices){
+    # Find device which is the newest.
+    $newestDevice = $duplicatedDevice.Group | Sort-Object -Property lastSyncDateTime -Descending | Select-Object -First 1
+    Write-Host "Serial $($duplicatedDevice.Name)"
+    Write-Host "# Houden $($newestDevice.deviceName) $($newestDevice.lastSyncDateTime)"
+    foreach($oldDevice in ($duplicatedDevice.Group | Sort-Object -Property lastSyncDateTime -Descending | Select-Object -Skip 1)){
+        Write-Host "# Verwijderen $($oldDevice.deviceName) $($oldDevice.lastSyncDateTime)"
+        Remove-DeviceManagement_ManagedDevices -managedDeviceId $oldDevice.id
+    }
+}
